@@ -45,11 +45,16 @@ odoo.define('pos_auto_invoice', function (require) {
                     console.log('xxxxxx.............');
                     console.log(company_journal0);
                     if (company_journal0.length==0) {
-                        self.gui.show_popup('error',{
-                            'title': "Error: Metodo de pago",
-                            'body':  'Falta elegir la modalidad del metodo de pago seleccionado (manual/cta. cte)',
+                        // self.gui.show_popup('error',{
+                        //     'title': "Error: Metodo de pago",
+                        //     'body':  'Falta elegir la modalidad del metodo de pago seleccionado (manual/cta. cte)',
+                        // });
+                        // return;
+                        Gui.showPopup('ConfirmPopup', {
+                            title: 'Error: Metodo de pago',
+                            body: 'Falta elegir la modalidad del metodo de pago seleccionado (manual/cta. cte)'
                         });
-                        return;
+                        invoiced_def.resolve(-1);
                     }
                     if (company_journal0[0]['type']==='cta_cte'){
                         pos_auto_invoice = true;
