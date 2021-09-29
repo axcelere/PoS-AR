@@ -58,6 +58,34 @@ odoo.define('pos_auto_invoice.screens', function(require) {
                 })
                 await super._finalizeValidation();
             }
+
+            async _isOrderValid(isForceValidate) {
+                var res = super._isOrderValid(...arguments);
+                var self = this;
+                var order = this.currentOrder;
+                var client = this.currentOrder.get_client();
+                await $.when(this.env.pos.get_pos_auto_amount(order)
+                ).then(function(pos_auto_invoice) {
+                    console.log('pos_auto_invoice222222', pos_auto_invoice);
+                    console.log('order.get_total_with_tax()', order.get_total_with_tax());
+                    if (order.is_to_invoice() && client && !client.vat && order.get_total_with_tax() > pos_auto_invoice) {
+                        console.log('Missing Customer Vat');
+                        console.log('this', this);
+                        console.log('self', self);
+                        //rejectInvoiced({code:400, message:'Missing Customer Vat', data:{}});
+                        //return res;
+                        self.showPopup('ConfirmPopup', {
+                            title: 'Falta el Cuit del Cliente',
+                            body: 'El Cuit es requerido ya que la facturación supera los $ ' + pos_auto_invoice,
+                        });
+                        res = false
+                        return res;
+                    }
+                    else{console.log('entre por el else....'); return res}
+                })
+                return res;
+                //await super._isOrderValid(isForceValidate);
+            }
         };
 
     Registries.Component.extend(PaymentScreen, PosInvPaymentScreen);
