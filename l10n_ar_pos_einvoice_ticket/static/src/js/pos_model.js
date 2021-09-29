@@ -18,111 +18,157 @@ odoo.define('l10n_ar_pos_einvoice_ticket', function (require) {
     const { useListener } = require('web.custom_hooks');
     const Registries = require('point_of_sale.Registries');
 
-    const PosInvPaymentScreen = (PaymentScreen) =>
-        class extends PaymentScreen {
-            constructor() {
-                super(...arguments);
+    var _super_Order = models.Order.prototype;
+    models.Order = models.Order.extend({
+
+         renderElement: function() {
+            var self = this;
+            this._super();
+
+            if (this.pos.config.pos_auto_invoice) {
+               this.$('.js_invoice').addClass('oe_hidden');
             }
-
-            async _finalizeValidation() {
-                var self = this;
-                if (this.currentOrder.is_paid_with_cash() && this.env.pos.config.iface_cashdrawer) {
-                    this.env.pos.proxy.printer.open_cashbox();
-                }
-                var domain = [['pos_reference', '=', this.currentOrder['name']]]
-                var fields = ['account_move'];
-
-                this.currentOrder.initialize_validation_date();
-                this.currentOrder.finalized = true;
-
-                let syncedOrderBackendIds = [];
-
-                try {
-                    if (this.currentOrder.is_to_invoice()) {
-                        syncedOrderBackendIds = await this.env.pos.push_and_invoice_order(
-                            this.currentOrder
-                        );
-                    } else {
-                        syncedOrderBackendIds = await this.env.pos.push_single_order(this.currentOrder);
-                    }
-                } catch (error) {
-                    if (error instanceof Error) {
-                        throw error;
-                    } else {
-                        await this._handlePushOrderError(error);
-                    }
-                }
-                if (syncedOrderBackendIds.length && this.currentOrder.wait_for_push_order()) {
-                    const result = await this._postPushOrderResolve(
-                        this.currentOrder,
-                        syncedOrderBackendIds
-                    );
-                    if (!result) {
-                        await this.showPopup('ErrorPopup', {
-                            title: 'Error: no internet connection.',
-                            body: error,
-                        });
-                    }
-                }
-                if (this.currentOrder.is_to_invoice()) {
-                    this.rpc({
-                        model: 'pos.order',
-                        method: 'search_read',
-                        args: [domain, fields],
-                    })
-                    .then(function (output) {
-                        var invoice_number = output[0]['account_move'][1].split(" ")[1];
-                        var invoice_letter = output[0]['account_move'][1].split(" ")[0].substring(3, 4);
-                        self.currentOrder.invoice_number = invoice_number;
-                        self.currentOrder.invoice_letter = invoice_letter;
-                        var account_move = output[0]['account_move'][0]
-                        rpc.query({
-                            model: 'account.move',
-                            method: 'search_read',
-                            args: [[['id', '=', account_move]], ['l10n_ar_afip_auth_code',
-                                                               'l10n_ar_afip_auth_code_due',
-                                                               'l10n_ar_afip_qr_code',
-                                                               'l10n_latam_document_type_id',
-                                                               ]],
-                           }
-
-                        ).then(function (invoices) {
-                            self.currentOrder.l10n_ar_afip_qr_code = invoices[0]['l10n_ar_afip_qr_code'];
-                            self.currentOrder.l10n_ar_afip_auth_code = invoices[0]['l10n_ar_afip_auth_code'];
-                            self.currentOrder.l10n_ar_afip_auth_code_due = invoices[0]['l10n_ar_afip_auth_code_due'];
-                            self.currentOrder.l10n_latam_document_type_id = invoices[0]['l10n_latam_document_type_id'][1].split(" ")[0];
-                            self.showScreen(self.nextScreen);
-                        });
+        },
 
 
-                    })
-                }
-                else{
-                    this.showScreen(this.nextScreen);
-                }
+        initialize: function (attributes, options) {
+            _super_Order.initialize.apply(this, arguments);
+            if (this.pos.config.pos_auto_invoice) {
+                this.to_invoice = true;
 
-                // If we succeeded in syncing the current order, and
-                // there are still other orders that are left unsynced,
-                // we ask the user if he is willing to wait and sync them.
-                if (syncedOrderBackendIds.length && this.env.pos.db.get_orders().length) {
-                    const { confirmed } = await this.showPopup('ConfirmPopup', {
-                        title: this.env._t('Remaining unsynced orders'),
-                        body: this.env._t(
-                            'There are unsynced orders. Do you want to sync these orders?'
-                        ),
-                    });
-                    if (confirmed) {
-                        // NOTE: Not yet sure if this should be awaited or not.
-                        // If awaited, some operations like changing screen
-                        // might not work.
-                        this.env.pos.push_orders();
-                    }
-                }
             }
-        };
+        },
+        init_from_JSON: function (json) {
+            var res = _super_Order.init_from_JSON.apply(this, arguments);
+            if (json.to_invoice) {
+                this.to_invoice = json.to_invoice;
 
-    Registries.Component.extend(PaymentScreen, PosInvPaymentScreen);
+            }
+        }
+    });
 
-    return PosInvPaymentScreen;
+    pos_model.PosModel = pos_model.PosModel.extend({
+
+        _flush_orders: function(orders, options) {
+            var self = this;
+            var result, data;
+            result = data = SuperPosModel._flush_orders.call(this,orders, options)
+            _.each(orders,function(order){
+
+                if (order.to_invoice)
+                 var order = self.env.pos.get_order();
+                //if (this.env.pos.config.receipt_invoice_number)
+                    data.then(function(order_server_id){
+
+
+                            rpc.query({
+                            model: 'pos.order',
+                            method: 'read',
+                            domain: [['pos_reference', '=', order['name']]],
+                            fields: ['account_move'],
+                            args:[order_server_id, ['account_move','company_id']]
+                                }).then(function(result_dict){
+
+                                    if(result_dict.length){
+
+                                        let invoice = result_dict[0].account_move;
+                                        self.get_order().invoice_id = invoice[1];
+                                        account_move = result_dict[0]['account_move'][0];
+                                        company_id=result_dict[0]['company_id'][0];
+
+                                    }
+                            }).then(function (einvoices) {
+
+
+                                     rpc.query({
+                                         model: 'account.move',
+                                         method: 'search_read',
+                                         args: [[['id', '=', account_move]], ['l10n_ar_afip_auth_code',
+                                                                            'l10n_ar_afip_auth_code_due',
+                                                                            'l10n_ar_afip_barcode',
+                                                                            'l10n_ar_afip_qr_code',
+                                                                            'invoice_date_due',
+                                                                            'l10n_latam_document_type_id',
+                                                                            'company_id',
+                                                                            ]],
+                                        }
+
+                                     ).then(function (einvoice) {
+
+                                        if (account_move>0) {
+                                         l10n_ar_afip_auth_code = einvoice[0]['l10n_ar_afip_auth_code'];
+                                         l10n_ar_afip_qr_code= einvoice[0]['l10n_ar_afip_qr_code'];
+                                         l10n_ar_afip_auth_code_due= einvoice[0]['l10n_ar_afip_auth_code_due'];
+                                         //l10n_latam_document_type_id = einvoice[0]['l10n_latam_document_type_id'];
+                                         l10n_latam_document_type_id = einvoice[0]['l10n_latam_document_type_id'][1].split(" ")[0];
+                                         invoice_date_due= einvoice[0]['invoice_date_due'];
+                                         var split_invoice_date_due=invoice_date_due.split('-');
+                                         invoice_date_due=split_invoice_date_due[2]+"-"+split_invoice_date_due[1]+"-"+split_invoice_date_due[0];
+                                         company_id=einvoice[0]['company_id'][0];
+                                         }
+
+                                        }).then(function (company) {
+
+                                          rpc.query({
+                                          model: 'res.company',
+                                          method: 'search_read',
+                                          args: [[['id', '=', company_id]], ['l10n_ar_afip_start_date','l10n_ar_gross_income_number','street', 'city', 'state_id', 'country_id', 'company_registry']],
+                                    }).then(function (company_partner) {
+                                        l10n_ar_afip_start_date=company_partner[0]['l10n_ar_afip_start_date'];
+                                            if(l10n_ar_afip_start_date!=false){
+                                                var split_l10n_ar_afip_start_date=l10n_ar_afip_start_date.split('-');
+                                                l10n_ar_afip_start_date = split_l10n_ar_afip_start_date[2]+"-"+split_l10n_ar_afip_start_date[1]+"-"+split_l10n_ar_afip_start_date[0];
+                                              }
+                                        l10n_ar_gross_income_number=company_partner[0]['l10n_ar_gross_income_number'];
+                                        street=company_partner[0]['street'];
+                                        city=company_partner[0]['city'];
+
+                                    })
+
+
+                                        })
+
+
+                                 }).catch(function(error){
+                                return result
+                            })
+                    })
+            })
+            return result
+
+        },
+
+    })
+    pos_model.Order = pos_model.Order.extend({
+        export_for_printing: function(){
+            var self = this
+            var receipt = SuperOrder.export_for_printing.call(this)
+            if(self.invoice_id){
+                var invoice_id = self.invoice_id
+                var invoice = invoice_id.split("(")[0]
+                var invoice_number ="";
+                var invoice_letter="";
+                invoice_number = invoice_id.split("(")[0]
+                invoice_letter = invoice_id.split("(")[0].substring(3, 4);
+                //invoice_letter = orders[0]['account_move'][1].split(" ")[0].substring(3, 4);
+
+                receipt.street=street
+                receipt.city=city
+                receipt.invoice_id = invoice
+                receipt.invoice_number = invoice_number
+                receipt.invoice_letter = invoice_letter
+                receipt.l10n_ar_afip_auth_code=l10n_ar_afip_auth_code
+                receipt.l10n_ar_afip_qr_code=l10n_ar_afip_qr_code
+                receipt.l10n_ar_afip_auth_code_due=l10n_ar_afip_auth_code_due
+                receipt.l10n_latam_document_type_id=l10n_latam_document_type_id
+                receipt.invoice_date_due = invoice_date_due
+                receipt.l10n_ar_afip_start_date=l10n_ar_afip_start_date
+                receipt.l10n_ar_gross_income_number = l10n_ar_gross_income_number
+
+
+            }
+            return receipt
+        }
+    })
 
 });
