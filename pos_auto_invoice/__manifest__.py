@@ -7,7 +7,7 @@
     'category': 'Point Of Sale',
     'website': 'www.galup.com.ar',
     'summary': 'Auto Invoice.',
-    'depends': ['point_of_sale'],
+    'depends': ['point_of_sale', 'pos_tax_free_order'],
     'data': [
         'security/ir.model.access.csv',
         'views/payment_method_view.xml',
