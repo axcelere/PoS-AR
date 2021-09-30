@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="ActionTaxFreeTaxWidget" owl="1">
+        <div class="actionpad-tax-widget" >
+            <span class="control-button" t-on-click="onClick">
+                <i class="fa fa-pencil-square-o"></i>
+            	Tax Free
+            </span>
+        </div>
+    </t>
+    <t t-name="ActionApplyTaxTaxWidget" owl="1">
+        <div class="actionpad-tax-widget" >
+            <span class="control-button" t-on-click="onClick">
+                <i class="fa fa-pencil-square-o"></i>
+                Apply Tax
+            </span>
+        </div>
+    </t>
+</templates>
