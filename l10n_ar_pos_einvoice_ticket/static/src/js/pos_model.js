@@ -38,7 +38,9 @@ odoo.define('l10n_ar_pos_einvoice_ticket', function (require) {
             _super_Order.initialize.apply(this, arguments);
             if (this.pos.config.pos_auto_invoice) {
                 this.to_invoice = true;
-
+            }
+            if (this.pos.config.default_partner_id) {
+            	this.set_client(this.pos.db.get_partner_by_id(this.pos.config.default_partner_id[0]));
             }
         },
         init_from_JSON: function (json) {
