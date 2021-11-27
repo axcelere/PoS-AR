@@ -52,7 +52,7 @@ odoo.define('pos_auto_invoice.screens', function(require) {
                         //     }
                         // }
                     }
-                    else {
+                    else if (!order.to_invoice) {
                         console.log('pos_auto_invoice falseee');
                         order.is_tax_free_order=true;
                     }
